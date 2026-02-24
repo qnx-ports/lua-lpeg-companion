@@ -1,0 +1,88 @@
+# Contributor: Carlo Landmeter <clandmeter@alpinelinux.org>
+# Maintainer: Jakub Jirutka <jakub@jirutka.cz>
+pkgname=lua-lpeg
+_pkgname=lpeg
+pkgver=1.1.0
+pkgrel=0
+pkgdesc="Pattern-matching library for Lua"
+url="http://www.inf.puc-rio.br/~roberto/lpeg"
+arch="all"
+license="MIT"
+subpackages="$pkgname-dev"
+source="http://www.inf.puc-rio.br/~roberto/lpeg/$_pkgname-$pkgver.tar.gz
+	build-static-lib.patch"
+builddir="$srcdir/$_pkgname-$pkgver"
+
+#TODO: support 5.4
+#TODO: 5.3 has a segfault in tests
+_luaversions="5.1 5.2"
+for _v in $_luaversions; do
+	makedepends="$makedepends lua$_v-dev"
+	subpackages="$subpackages lua$_v-$_pkgname:_package"
+done
+
+prepare() {
+	default_prepare
+
+	sed -i -e 's/^CFLAGS =/CFLAGS +=/' \
+		-e 's/^COPT =/# COPT =/' \
+		makefile
+
+	local lver; for lver in $_luaversions; do
+		cp -r "$builddir" "$builddir-$lver"
+	done
+}
+
+build() {
+	local lver; for lver in $_luaversions; do
+		msg "Building for Lua $lver..."
+		make -C "$builddir-$lver" LUADIR=/usr/include/lua$lver
+	done
+}
+
+check() {
+	local lver; for lver in $_luaversions; do
+		msg "Testing on lua$lver"
+
+		cd "$builddir-${lver/jit/5.1}"
+		lua$lver test.lua
+	done
+}
+
+package() {
+	mkdir -p "$pkgdir"
+}
+
+dev() {
+	default_dev
+	mkdir -p "$subpkgdir"
+
+	local lver; for lver in $_luaversions; do
+		install -Dm644 "$builddir-$lver"/lpeg.a \
+			"$subpkgdir"/usr/lib/lua/$lver/lpeg.a
+	done
+}
+
+_package() {
+	local lver="${subpkgname:3:3}"
+	pkgdesc="Pattern-matching library for Lua $lver"
+	depends="lua$lver"
+	install_if="lua$lver $pkgname=$pkgver-r$pkgrel"
+	local rockdir="$subpkgdir/usr/lib/luarocks/rocks-$lver/$_pkgname/$pkgver-1"
+
+	cd "$builddir-$lver"
+
+	install -Dm755 lpeg.so \
+		"$subpkgdir"/usr/lib/lua/$lver/lpeg.so
+	install -Dm644 re.lua \
+		"$subpkgdir"/usr/share/lua/$lver/re.lua
+
+	mkdir -p "$rockdir"
+	echo 'rock_manifest = {}' > "$rockdir"/rock_manifest
+}
+
+
+sha512sums="
+01b2a4ceb2d110e143603bc63c84a59736ea735dd0ed9866286ba115d41be48d09c9ff21c8e2327974d2296944f6508d50a5c3a18f26ac1d81b8b2fc41f61222  lpeg-1.1.0.tar.gz
+adc35e6c649122f5cc47f6dbb0491124739037fc8e8e8af4edc26f2b94a07cbcb46e94f2ccf47ffcdccc6caf642a6dddd1bacee37e9793f1208432137c38bd01  build-static-lib.patch
+"
